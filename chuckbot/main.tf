@@ -3,13 +3,20 @@
 # ===========================#
 
 terraform {
-  backend "s3" {
-    bucket         = "chuckbot-tf-state-bucket"   
-    key            = "state/terraform.tfstate"
-    region         = var.aws_region
-    encrypt        = true
-    dynamodb_table = "chuckbot-tf-state-table"      
-  }
+    required_version = ">=1.2.0"
+    required_providers {
+        aws = {
+            source  = "hashicorp/aws"
+            version = "5.74.0"
+        }
+    }
+    backend "s3" {
+      bucket         = "chuckbot-tf-state-bucket"   
+      key            = "state/terraform.tfstate"
+      region         = "eu-west-2"
+      encrypt        = true
+      dynamodb_table = "chuckbot-tf-state-table"      
+    }
 }
 
 provider "aws" {
