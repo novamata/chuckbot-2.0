@@ -4,11 +4,11 @@
 
 terraform {
   backend "s3" {
-    bucket         = "your-terraform-state-bucket"   
-    key            = "discord-bot/terraform.tfstate"
+    bucket         = "chuckbot-tf-state-bucket"   
+    key            = "state/terraform.tfstate"
     region         = var.aws_region
     encrypt        = true
-    dynamodb_table = "terraform-locks"      
+    dynamodb_table = "chuckbot-tf-state-table"      
   }
 }
 
@@ -158,10 +158,6 @@ resource "aws_lambda_function" "daily_quote_sender" {
   ]
 }
 
-# ===========================#
-# Lambda Quote Generator     #
-# ===========================#
-
 data "archive_file" "quote_generator_zip" {
   type        = "zip"
   source_dir  = "${path.module}/lambda/quote_generator"
@@ -201,7 +197,7 @@ resource "aws_dynamodb_table" "quotes_table" {
 
   attribute {
     name = "QuoteID"
-    type = "S"  # Using UUIDs as strings
+    type = "S"
   }
 
   tags = {
