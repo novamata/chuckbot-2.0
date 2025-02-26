@@ -7,7 +7,6 @@ dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.getenv('DYNAMODB_TABLE'))
 
 def lambda_handler(event, context):
-    # Parse the incoming Discord interaction
     body = json.loads(event['body'])
     token = body['token']
     application_id = body['application_id']
@@ -17,7 +16,6 @@ def lambda_handler(event, context):
     command_name = data['name']
 
     if command_name == "quote":
-        # Fetch a random quote from DynamoDB
         response = table.scan()
         items = response.get('Items', [])
         if not items:
@@ -26,21 +24,19 @@ def lambda_handler(event, context):
             quote_item = random.choice(items)
             quote = quote_item['Quote']
 
-        # Respond to Discord
         return {
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json'
             },
             'body': json.dumps({
-                "type": 4,  # Channel message with source
+                "type": 4,  
                 "data": {
                     "content": quote
                 }
             })
         }
 
-    # Handle other commands if any
     return {
         'statusCode': 200,
         'body': json.dumps({"type": 4, "data": {"content": "Unknown command."}})

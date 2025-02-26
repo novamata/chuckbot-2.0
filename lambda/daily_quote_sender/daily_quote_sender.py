@@ -8,7 +8,6 @@ dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.getenv('DYNAMODB_TABLE'))
 
 def lambda_handler(event, context):
-    # Fetch a random quote from DynamoDB
     response = table.scan()
     items = response.get('Items', [])
     if not items:
@@ -17,7 +16,6 @@ def lambda_handler(event, context):
         quote_item = random.choice(items)
         quote = quote_item['Quote']
 
-    # Send the quote to the Discord channel via webhook
     discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
     if not discord_webhook_url:
         return {

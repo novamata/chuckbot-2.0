@@ -94,46 +94,46 @@ data "aws_caller_identity" "current" {}
 # Lambda                     #
 # ===========================#
 
-resource "aws_lambda_function" "interaction_handler" {
-  filename         = data.archive_file.interaction_handler_zip.output_path
-  function_name    = "DiscordInteractionHandler"
-  role             = aws_iam_role.lambda_execution_role.arn
-  handler          = "handler.lambda_handler"
-  runtime          = "python3.8"
-  source_code_hash = filebase64sha256(data.archive_file.interaction_handler_zip.output_path)
+# resource "aws_lambda_function" "interaction_handler" {
+#   filename         = data.archive_file.interaction_handler_zip.output_path
+#   function_name    = "DiscordInteractionHandler"
+#   role             = aws_iam_role.lambda_execution_role.arn
+#   handler          = "handler.lambda_handler"
+#   runtime          = "python3.8"
+#   source_code_hash = filebase64sha256(data.archive_file.interaction_handler_zip.output_path)
 
-  environment {
-    variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
-    }
-  }
+#   environment {
+#     variables = {
+#       DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
+#     }
+#   }
 
-  depends_on = [
-    aws_iam_role_policy_attachment.lambda_attach_policy,
-    aws_dynamodb_table.quotes_table
-  ]
-}
+#   depends_on = [
+#     aws_iam_role_policy_attachment.lambda_attach_policy,
+#     aws_dynamodb_table.quotes_table
+#   ]
+# }
 
-resource "aws_lambda_function" "daily_quote_sender" {
-  filename         = data.archive_file.daily_quote_sender_zip.output_path
-  function_name    = "DailyQuoteSender"
-  role             = aws_iam_role.lambda_execution_role.arn
-  handler          = "handler.lambda_handler"
-  runtime          = "python3.8"
-  source_code_hash = filebase64sha256(data.archive_file.daily_quote_sender_zip.output_path)
+# resource "aws_lambda_function" "daily_quote_sender" {
+#   filename         = data.archive_file.daily_quote_sender_zip.output_path
+#   function_name    = "DailyQuoteSender"
+#   role             = aws_iam_role.lambda_execution_role.arn
+#   handler          = "handler.lambda_handler"
+#   runtime          = "python3.8"
+#   source_code_hash = filebase64sha256(data.archive_file.daily_quote_sender_zip.output_path)
 
-  environment {
-    variables = {
-      DYNAMODB_TABLE     = aws_dynamodb_table.quotes_table.name
-      DISCORD_WEBHOOK_URL = var.discord_webhook_url
-    }
-  }
+#   environment {
+#     variables = {
+#       DYNAMODB_TABLE     = aws_dynamodb_table.quotes_table.name
+#       DISCORD_WEBHOOK_URL = var.discord_webhook_url
+#     }
+#   }
 
-  depends_on = [
-    aws_iam_role_policy_attachment.lambda_attach_policy,
-    aws_dynamodb_table.quotes_table
-  ]
-}
+#   depends_on = [
+#     aws_iam_role_policy_attachment.lambda_attach_policy,
+#     aws_dynamodb_table.quotes_table
+#   ]
+# }
 
 resource "aws_lambda_function" "quote_generator" {
   filename         = data.archive_file.quote_generator_zip.output_path
