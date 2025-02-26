@@ -1,24 +1,6 @@
 # ===========================#
 # Terraform Configuration    #
 # ===========================#
-
-terraform {
-    required_version = ">=1.2.0"
-    required_providers {
-        aws = {
-            source  = "hashicorp/aws"
-            version = "5.74.0"
-        }
-    }
-    backend "s3" {
-      bucket         = "chuckbot-tf-state-bucket"   
-      key            = "state/terraform.tfstate"
-      region         = "eu-west-2"
-      encrypt        = true
-      dynamodb_table = "chuckbot-tf-state-table"      
-    }
-}
-
 provider "aws" {
   region = var.aws_region
 }
@@ -112,12 +94,6 @@ data "aws_caller_identity" "current" {}
 # Lambda                     #
 # ===========================#
 
-data "archive_file" "interaction_handler_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/interaction_handler"
-  output_path = "${path.module}/interaction_handler.zip"
-}
-
 resource "aws_lambda_function" "interaction_handler" {
   filename         = data.archive_file.interaction_handler_zip.output_path
   function_name    = "DiscordInteractionHandler"
@@ -136,12 +112,6 @@ resource "aws_lambda_function" "interaction_handler" {
     aws_iam_role_policy_attachment.lambda_attach_policy,
     aws_dynamodb_table.quotes_table
   ]
-}
-
-data "archive_file" "daily_quote_sender_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/daily_quote_sender"
-  output_path = "${path.module}/daily_quote_sender.zip"
 }
 
 resource "aws_lambda_function" "daily_quote_sender" {
@@ -163,12 +133,6 @@ resource "aws_lambda_function" "daily_quote_sender" {
     aws_iam_role_policy_attachment.lambda_attach_policy,
     aws_dynamodb_table.quotes_table
   ]
-}
-
-data "archive_file" "quote_generator_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda/quote_generator"
-  output_path = "${path.module}/quote_generator.zip"
 }
 
 resource "aws_lambda_function" "quote_generator" {
@@ -208,8 +172,7 @@ resource "aws_dynamodb_table" "quotes_table" {
   }
 
   tags = {
-    Environment = "Production"
-    Application = "DiscordBot"
+    Application = "chuckbot-2.0"
   }
 }
 
@@ -251,7 +214,6 @@ resource "aws_api_gateway_deployment" "discord_api_deployment" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.discord_api.id
-  stage_name  = "prod"
 }
 
 resource "aws_lambda_permission" "api_gateway_permission" {
@@ -274,7 +236,7 @@ output "api_gateway_url" {
 resource "aws_cloudwatch_event_rule" "daily_quote_schedule" {
   name                = "DailyQuoteGeneration"
   description         = "Triggers DailyQuoteSender Lambda every day at 9 AM UTC"
-  schedule_expression = "cron(0 9 * * ? *)"  # Adjust the cron as needed
+  schedule_expression = "cron(0 9 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "daily_quote_target" {
