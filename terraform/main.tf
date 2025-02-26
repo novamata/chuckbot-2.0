@@ -94,61 +94,72 @@ data "aws_caller_identity" "current" {}
 # Lambda                     #
 # ===========================#
 
-# resource "aws_lambda_function" "interaction_handler" {
-#   filename         = data.archive_file.interaction_handler_zip.output_path
-#   function_name    = "DiscordInteractionHandler"
-#   role             = aws_iam_role.lambda_execution_role.arn
-#   handler          = "handler.lambda_handler"
-#   runtime          = "python3.8"
-#   source_code_hash = filebase64sha256(data.archive_file.interaction_handler_zip.output_path)
+resource "aws_lambda_function" "interaction_handler" {
+  filename         = data.archive_file.interaction_handler_zip.output_path
+  function_name    = "DiscordInteractionHandler"
+  role             = aws_iam_role.lambda_execution_role.arn
+  handler          = "lambda_handler.lambda_handler"
+  runtime          = "python3.10"
+  source_code_hash = filebase64sha256(data.archive_file.interaction_handler_zip.output_path)
 
-#   environment {
-#     variables = {
-#       DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
-#     }
-#   }
+  environment {
+    variables = {
+      DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
+    }
+  }
 
-#   depends_on = [
-#     aws_iam_role_policy_attachment.lambda_attach_policy,
-#     aws_dynamodb_table.quotes_table
-#   ]
-# }
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_attach_policy,
+    aws_dynamodb_table.quotes_table
+  ]
+}
 
-# resource "aws_lambda_function" "daily_quote_sender" {
-#   filename         = data.archive_file.daily_quote_sender_zip.output_path
-#   function_name    = "DailyQuoteSender"
-#   role             = aws_iam_role.lambda_execution_role.arn
-#   handler          = "handler.lambda_handler"
-#   runtime          = "python3.8"
-#   source_code_hash = filebase64sha256(data.archive_file.daily_quote_sender_zip.output_path)
+resource "aws_lambda_function" "daily_quote_sender" {
+  filename         = data.archive_file.daily_quote_sender_zip.output_path
+  function_name    = "DailyQuoteSender"
+  role             = aws_iam_role.lambda_execution_role.arn
+  handler          = "lambda_handler.lambda_handler"
+  runtime          = "python3.10"
+  source_code_hash = filebase64sha256(data.archive_file.daily_quote_sender_zip.output_path)
 
-#   environment {
-#     variables = {
-#       DYNAMODB_TABLE     = aws_dynamodb_table.quotes_table.name
-#       DISCORD_WEBHOOK_URL = var.discord_webhook_url
-#     }
-#   }
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = aws_dynamodb_table.quotes_table.name
+      DISCORD_WEBHOOK_URL = var.discord_webhook_url
+    }
+  }
 
-#   depends_on = [
-#     aws_iam_role_policy_attachment.lambda_attach_policy,
-#     aws_dynamodb_table.quotes_table
-#   ]
-# }
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_attach_policy,
+    aws_dynamodb_table.quotes_table
+  ]
+}
+
+resource "aws_lambda_layer_version" "openai_layer" {
+  filename   = "${path.module}/../lambda_layer/openai_layer.zip"  
+  layer_name = "discord_bot_dependencies"
+  compatible_runtimes = ["python3.10"]
+}
 
 resource "aws_lambda_function" "quote_generator" {
   filename         = data.archive_file.quote_generator_zip.output_path
   function_name    = "QuoteGenerator"
   role             = aws_iam_role.lambda_execution_role.arn
-  handler          = "handler.lambda_handler"
-  runtime          = "python3.8"
+  handler          = "quote_generator.lambda_handler"
+  runtime          = "python3.10"
   source_code_hash = filebase64sha256(data.archive_file.quote_generator_zip.output_path)
 
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
-      AWS_REGION     = var.aws_region
+      REGION     = var.aws_region
     }
   }
+  timeout = 15
+  
+  layers = [
+    aws_lambda_layer_version.openai_layer.arn
+  ]
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_attach_policy,
@@ -156,6 +167,23 @@ resource "aws_lambda_function" "quote_generator" {
     aws_dynamodb_table.quotes_table
   ]
 }
+
+# ===========================#
+# Secrets Manager            #
+# ===========================#
+
+resource "aws_secretsmanager_secret" "discord_bot_secrets" {
+  name        = "discord_bot_secrets"
+  description = "Secrets for the Discord bot including the OpenAI API key"
+}
+
+resource "aws_secretsmanager_secret_version" "discord_bot_secrets_version" {
+  secret_id     = aws_secretsmanager_secret.discord_bot_secrets.id
+  secret_string = jsonencode({
+    OPENAI_API_KEY = var.openai_api_key
+  })
+}
+
 
 # ===========================#
 # DynamoDB                   #
@@ -251,4 +279,24 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   function_name = aws_lambda_function.daily_quote_sender.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.daily_quote_schedule.arn
+}
+
+resource "aws_cloudwatch_event_rule" "quote_generator_schedule" {
+  name                = "QuoteGeneratorSchedule"
+  description         = "Triggers the quote generator Lambda on a schedule"
+  schedule_expression = "cron(0/1 * * * ? *)"  # NEED TO ADJUST
+}
+
+resource "aws_cloudwatch_event_target" "quote_generator_target" {
+  rule      = aws_cloudwatch_event_rule.quote_generator_schedule.name
+  target_id = "QuoteGenerator"
+  arn       = aws_lambda_function.quote_generator.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_quote_generator" {
+  statement_id  = "AllowExecutionFromEventBridgeQuoteGenerator"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.quote_generator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.quote_generator_schedule.arn
 }

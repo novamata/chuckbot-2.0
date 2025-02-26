@@ -2,17 +2,17 @@ import os
 import json
 import boto3
 import uuid
-import openai
 import logging
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Attr
+from openai import OpenAI  
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def get_secret():
     secret_name = "discord_bot_secrets"
-    region_name = os.getenv('AWS_REGION')
+    region_name = os.getenv('REGION')
     
     session = boto3.session.Session()
     client = session.client(service_name='secretsmanager', region_name=region_name)
@@ -35,53 +35,66 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'message': 'Server error: OPENAI_API_KEY missing.'})
         }
-    openai.api_key = openai_api_key
+    
+    client = OpenAI(api_key=openai_api_key)
 
     prompt = (
         "Generate a Chuck Norris-style quote. The quote should be witty, humorous, "
         "and reflect the legendary toughness and unique abilities of Chuck Norris. "
         "Example: 'Chuck Norris can divide by zero.'"
     )
+    
+    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('REGION'))
+    table = dynamodb.Table(os.getenv('DYNAMODB_TABLE'))
 
-    try:
-        response = openai.Completion.create(
-            model="text-davinci-003", 
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=60,
-            n=1,
-            stop=None,
-        )
-        quote = response.choices[0].text.strip()
+    num_quotes_to_generate = 30
+    added_count = 0
+    attempts = 0
+    max_attempts = 50  
 
-        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION'))
-        table = dynamodb.Table(os.getenv('DYNAMODB_TABLE'))
+    while added_count < num_quotes_to_generate and attempts < max_attempts:
+        attempts += 1
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a witty Chuck Norris quote generator."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=60,
+                n=1
+            )
+        except Exception as e:
+            logger.error(f"Error calling OpenAI API: {str(e)}")
+            break
+
+        quote = response.choices[0].message.content.strip()
+        logger.info(f"Generated quote: '{quote}'")
+        
         scan_response = table.scan(FilterExpression=Attr('Quote').eq(quote))
         items = scan_response.get('Items', [])
-
         if items:
-            logger.info("Duplicate quote found. Skipping insertion.")
-            return {
-                'statusCode': 200,
-                'body': json.dumps({'message': 'Duplicate quote. No action taken.'})
-            }
-
+            logger.info("Duplicate quote found, skipping insertion.")
+            continue
+        
         quote_id = str(uuid.uuid4())
-        table.put_item(
-            Item={
-                'QuoteID': quote_id,
-                'Quote': quote
-            }
-        )
-        logger.info(f"Successfully added quote: {quote}")
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'message': 'Quote generated and stored successfully.', 'quote': quote})
-        }
+        try:
+            table.put_item(
+                Item={
+                    'QuoteID': quote_id,
+                    'Quote': quote
+                }
+            )
+            logger.info(f"Added quote: {quote}")
+            added_count += 1
+        except Exception as e:
+            logger.error(f"Error inserting quote into DynamoDB: {str(e)}")
 
-    except Exception as e:
-        logger.error(f"Error generating or storing quote: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'message': 'Failed to generate or store quote.', 'error': str(e)})
-        }
+    return {
+        'statusCode': 200,
+        'body': json.dumps({
+            'message': f'Quote generation complete. {added_count} new quotes added after {attempts} attempts.'
+        })
+    }
