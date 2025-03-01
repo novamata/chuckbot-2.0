@@ -1,4 +1,4 @@
-# Chuck Norris Quote DiscordBot
+# Chuck Norris Quote Discord Bot
 
 A serverless application that generates and sends unique Chuck Norris quotes to a Discord channel using AI. The system automatically generates new quotes and ensures no duplicates are sent.
 
