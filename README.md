@@ -31,6 +31,27 @@ This project uses several AWS services in a serverless architecture:
    - Tracks which quotes have been sent
    - Uses a Global Secondary Index for efficient quote status tracking
 
+## Directory Structure
+
+```
+.
+├── README.md
+├── lambda/
+│   ├── quote_generator/
+│   │   └── quote_generator.py
+│   └── daily_quote_sender/
+│       └── daily_quote_sender.py
+├── lambda_layer/
+│   ├── openai_layer.zip
+│   └── discord_layer.zip
+└── terraform/
+    ├── main.tf
+    ├── variables.tf
+    ├── data.tf
+    ├── outputs.tf
+    └── terraform.tfvars
+```
+
 ## Prerequisites
 
 - AWS Account
