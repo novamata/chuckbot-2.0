@@ -48,7 +48,6 @@ This project uses several AWS services in a serverless architecture:
     ├── main.tf
     ├── variables.tf
     ├── data.tf
-    ├── outputs.tf
     └── terraform.tfvars
 ```
 
