@@ -1,4 +1,4 @@
-# Chuck Norris Quote Bot
+# Chuck Norris Quote DiscordBot
 
 A serverless application that generates and sends unique Chuck Norris quotes to a Discord channel using AI. The system automatically generates new quotes and ensures no duplicates are sent.
 
@@ -98,7 +98,7 @@ This project uses several AWS services in a serverless architecture:
    cd terraform
    terraform init
    terraform plan
-   terraform apply
+   terraform apply -var-file="terraform.tfvars"
    ```
 
 ## How It Works
