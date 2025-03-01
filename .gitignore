@@ -3,6 +3,4 @@
 *.tfvars
 .terraform/
 .terraform.lock.hcl
-daily_quote_sender.zip
-interaction_handler.zip
-quote_generator.zip
+*.zip
