@@ -6,7 +6,6 @@ import logging
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Attr
 from openai import OpenAI  
-import time
 from difflib import SequenceMatcher
 
 logger = logging.getLogger()
@@ -75,7 +74,8 @@ def lambda_handler(event, context):
                     table.put_item(
                         Item={
                             'QuoteID': quote_id,
-                            'Quote': quote
+                            'Quote': quote,
+                            'Sent': 0
                         }
                     )
                     logger.info(f"Stored unique quote with ID: {quote_id}")

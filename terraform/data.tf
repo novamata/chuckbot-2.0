@@ -1,8 +1,4 @@
-data "archive_file" "interaction_handler_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda/interaction_handler"
-  output_path = "${path.module}/interaction_handler.zip"
-}
+data "aws_caller_identity" "current" {}
 
 data "archive_file" "daily_quote_sender_zip" {
   type        = "zip"

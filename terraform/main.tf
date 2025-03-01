@@ -36,9 +36,13 @@ resource "aws_iam_policy" "lambda_policy" {
         Action   = [
           "dynamodb:PutItem",
           "dynamodb:Scan",
-          "dynamodb:GetItem"
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem"
         ]
-        Resource = aws_dynamodb_table.quotes_table.arn
+        Resource = [
+          aws_dynamodb_table.quotes_table.arn,
+          "${aws_dynamodb_table.quotes_table.arn}/index/*"
+        ]
       },
       {
         Effect   = "Allow"
@@ -81,6 +85,7 @@ resource "aws_iam_policy" "secrets_manager_policy" {
 resource "aws_iam_role_policy_attachment" "lambda_attach_policy" {
   role       = aws_iam_role.lambda_execution_role.name
   policy_arn = aws_iam_policy.lambda_policy.arn
+  depends_on = [aws_iam_policy.lambda_policy]
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_attach_secrets_policy" {
@@ -88,46 +93,35 @@ resource "aws_iam_role_policy_attachment" "lambda_attach_secrets_policy" {
   policy_arn = aws_iam_policy.secrets_manager_policy.arn
 }
 
-data "aws_caller_identity" "current" {}
-
 # ===========================#
 # Lambda                     #
 # ===========================#
 
-resource "aws_lambda_function" "interaction_handler" {
-  filename         = data.archive_file.interaction_handler_zip.output_path
-  function_name    = "DiscordInteractionHandler"
-  role             = aws_iam_role.lambda_execution_role.arn
-  handler          = "lambda_handler.lambda_handler"
-  runtime          = "python3.10"
-  source_code_hash = filebase64sha256(data.archive_file.interaction_handler_zip.output_path)
-
-  environment {
-    variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.quotes_table.name
-    }
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.lambda_attach_policy,
-    aws_dynamodb_table.quotes_table
-  ]
+resource "aws_lambda_layer_version" "discord_layer" {
+  filename   = "${path.module}/../lambda_layer/discord_layer.zip"  
+  layer_name = "discord_dependencies"
+  compatible_runtimes = ["python3.10"]
 }
 
 resource "aws_lambda_function" "daily_quote_sender" {
   filename         = data.archive_file.daily_quote_sender_zip.output_path
   function_name    = "DailyQuoteSender"
   role             = aws_iam_role.lambda_execution_role.arn
-  handler          = "lambda_handler.lambda_handler"
+  handler          = "daily_quote_sender.lambda_handler"
   runtime          = "python3.10"
   source_code_hash = filebase64sha256(data.archive_file.daily_quote_sender_zip.output_path)
 
   environment {
     variables = {
-      DYNAMODB_TABLE     = aws_dynamodb_table.quotes_table.name
+      DYNAMODB_TABLE      = aws_dynamodb_table.quotes_table.name
       DISCORD_WEBHOOK_URL = var.discord_webhook_url
     }
   }
+  timeout = 15
+
+  layers = [
+    aws_lambda_layer_version.discord_layer.arn
+  ]
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_attach_policy,
@@ -137,7 +131,7 @@ resource "aws_lambda_function" "daily_quote_sender" {
 
 resource "aws_lambda_layer_version" "openai_layer" {
   filename   = "${path.module}/../lambda_layer/openai_layer.zip"  
-  layer_name = "discord_bot_dependencies"
+  layer_name = "openai_dependencies"
   compatible_runtimes = ["python3.10"]
 }
 
@@ -199,62 +193,22 @@ resource "aws_dynamodb_table" "quotes_table" {
     type = "S"
   }
 
+  attribute {
+    name = "Sent"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name               = "SentIndex"
+    hash_key           = "Sent"
+    projection_type    = "ALL"
+    read_capacity      = 0
+    write_capacity     = 0
+  }
+
   tags = {
     Application = "chuckbot-2.0"
   }
-}
-
-# ===========================#
-# API Gateway                #
-# ===========================#
-
-resource "aws_api_gateway_rest_api" "discord_api" {
-  name        = "DiscordInteractionAPI"
-  description = "API Gateway for Discord Bot Interactions"
-}
-
-resource "aws_api_gateway_resource" "discord_interactions" {
-  rest_api_id = aws_api_gateway_rest_api.discord_api.id
-  parent_id   = aws_api_gateway_rest_api.discord_api.root_resource_id
-  path_part   = "interactions"
-}
-
-resource "aws_api_gateway_method" "post_interactions" {
-  rest_api_id   = aws_api_gateway_rest_api.discord_api.id
-  resource_id   = aws_api_gateway_resource.discord_interactions.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id = aws_api_gateway_rest_api.discord_api.id
-  resource_id = aws_api_gateway_resource.discord_interactions.id
-  http_method = aws_api_gateway_method.post_interactions.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.interaction_handler.invoke_arn
-}
-
-resource "aws_api_gateway_deployment" "discord_api_deployment" {
-  depends_on = [
-    aws_api_gateway_integration.lambda_integration
-  ]
-
-  rest_api_id = aws_api_gateway_rest_api.discord_api.id
-}
-
-resource "aws_lambda_permission" "api_gateway_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.interaction_handler.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.discord_api.execution_arn}/*/*"
-}
-
-output "api_gateway_url" {
-  description = "API Gateway endpoint URL for Discord interactions"
-  value       = "${aws_api_gateway_deployment.discord_api_deployment.invoke_url}/interactions"
 }
 
 # ===========================#
@@ -262,8 +216,8 @@ output "api_gateway_url" {
 # ===========================#
 
 resource "aws_cloudwatch_event_rule" "daily_quote_schedule" {
-  name                = "DailyQuoteGeneration"
-  description         = "Triggers DailyQuoteSender Lambda every day at 9 AM UTC"
+  name                = "DailyQuoteSchedule"
+  description         = "Triggers daily quote sender Lambda every day at 9 AM UTC"
   schedule_expression = "cron(0 9 * * ? *)"
 }
 
@@ -283,8 +237,8 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 
 resource "aws_cloudwatch_event_rule" "quote_generator_schedule" {
   name                = "QuoteGeneratorSchedule"
-  description         = "Triggers the quote generator Lambda on a schedule"
-  schedule_expression = "rate(1 minute)"  # Run every minute for testing
+  description         = "Triggers the quote generator Lambda daily"
+  schedule_expression = "cron(0 12 * * ? *)" 
 }
 
 resource "aws_cloudwatch_event_target" "quote_generator_target" {
