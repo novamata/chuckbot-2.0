@@ -284,7 +284,7 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 resource "aws_cloudwatch_event_rule" "quote_generator_schedule" {
   name                = "QuoteGeneratorSchedule"
   description         = "Triggers the quote generator Lambda on a schedule"
-  schedule_expression = "cron(0/1 * * * ? *)"  # NEED TO ADJUST
+  schedule_expression = "rate(1 minute)"  # Run every minute for testing
 }
 
 resource "aws_cloudwatch_event_target" "quote_generator_target" {
